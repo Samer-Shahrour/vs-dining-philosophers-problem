@@ -8,48 +8,44 @@ while getopts "n:" opt; do
   esac
 done
 
-NUMBER_PHILOSOPHEN=${number:-3}
+NUMBER_PHILOSOPHERS=${number:-3}
 
-if [ "$NUMBER_PHILOSOPHEN" -lt 3 ]; then
+if [ "$NUMBER_PHILOSOPHERS" -lt 3 ]; then
     echo "The number is less than 3. Setting it to 3 by default."
-    NUMBER_PHILOSOPHEN=3
+    NUMBER_PHILOSOPHERS=3
 fi
 
 
-for i in $(seq 1 ${NUMBER_PHILOSOPHEN});
+for i in $(seq 1 ${NUMBER_PHILOSOPHERS});
 do
-    echo "stopping philosoph $i..."
+    echo "stopping and removing philosoph $i..."
     docker stop ph$i 
-done
-
-for i in $(seq 1 ${NUMBER_PHILOSOPHEN});
-do
-    echo "removing philosoph $i..."
     docker rm ph$i 
+
 done
 
 echo "Checking if network vs-net exists..."
 docker network inspect vs-net >/dev/null 2>&1 || docker network create vs-net
 echo "Network vs-net is ready."
 
+
 echo "Building philosopher..."
 docker build --quiet ${BASE_DIR}philosoph -t philosoph
 echo -e "\n\n"
 
 
-for i in $(seq 1 ${NUMBER_PHILOSOPHEN});
+for i in $(seq 1 ${NUMBER_PHILOSOPHERS});
 do
     echo "Starting philosoph $i..."
     docker run -d --net=vs-net \
     -e NAME="ph$i"  \
+    -e NUMBER_PHILOSOPHERS=$NUMBER_PHILOSOPHERS  \
     --name ph$i philosoph
 done
 
 sleep 2s
 
-for i in $(seq 1 ${NUMBER_PHILOSOPHEN});
+for i in $(seq 1 ${NUMBER_PHILOSOPHERS});
 do
-    docker logs ph$i
+    docker logs -f ph$i &
 done
-
-exec bash
