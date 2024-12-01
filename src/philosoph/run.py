@@ -1,145 +1,137 @@
-import logging
-import threading
-import os
+import socket
+import json
 import time
 import random
-import setup
-from communication import left_client, right_client
-import socket
-import threading
-from enum import Enum
+import logging
+import os
 
-NAME = os.environ.get('NAME')
-logging.basicConfig(format=f'{NAME}: %(message)s', level=logging.INFO)
 
+ID = os.environ.get('ID')
+logging.basicConfig(format=f'PH{ID}: %(message)s', level=logging.INFO)
 NUMBER_PHILOSOPHERS = int(os.environ.get('NUMBER_PHILOSOPHERS'))
 
-MY_ID = int(NAME[2:])
-DOMINANT_HAND_RIGHT = False if MY_ID % 2 != 0 else True
-NAME_RIGHT_PARTNER, NAME_LEFT_PARTNER = setup.set_partners(MY_ID, NUMBER_PHILOSOPHERS)
-counter_eat = 0
-counter_try_eat = 0
-counter_think = 0
+class MyRpc:
+    def __init__(self, host, port):
+        self.host = host
+        self.port = port
 
-class State(Enum):
-    EATING = 1
-    THINKING = 2
-    TRYING_TO_EAT = 3
+    def reserve(self):
+        return self.call("reserve")
 
-state = State.THINKING
+    def free(self):
+        return self.call("free")
 
-mutex = threading.Lock()
+    def call(self, method):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+                client_socket.connect((self.host, self.port))
+                request = {"method": method}
+                client_socket.sendall(json.dumps(request).encode())
+                response = client_socket.recv(1024).decode()
+                response = json.loads(response)
+                return response
+        except Exception as e:
+            logging.error(f"Error calling {method} on {self.host}:{self.port} - {e}")
+            return {"status": "error", "message": str(e)}
 
-def right_server():
-    global state
-    RIGHT_PORT = 8080
-    HOST = '0.0.0.0'         
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind((HOST, RIGHT_PORT))
-    s.listen()
-   
-    while True:
-        conn, _ = s.accept()
-        data = conn.recv(1024)
-        if data == b'REQUEST':
-            
-            mutex.acquire()
-           
-            if state == State.EATING or state == State.TRYING_TO_EAT:
-                conn.sendall(b'NACK')
-            else:
-                conn.sendall(b'ACK')
-                
-                   
-            mutex.release()
+
+class Philosopher:
+    def __init__(self, id):
+        self.id = int(id)  #2
+        self.fork_port = 8080
+        left, right = self.get_forks(NUMBER_PHILOSOPHERS)
+        self.left_fork = MyRpc(left, self.fork_port)
+        self.right_fork = MyRpc(right, self.fork_port)
+        self.right_handed = False if self.id % 2 != 0 else True
+
+
+    def get_forks(self, NUMBER_PHILOSOPHERS):
         
-        conn.close()
+        right = f"f{self.id - 1}"
+        left = f"f{self.id}"
 
+        if self.id == 1:
+            right = f"f{NUMBER_PHILOSOPHERS}"
+
+        return left, right
     
-def left_server():
-    global state
-    LEFT_PORT = 8081
-    HOST = '0.0.0.0'         
-    
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind((HOST, LEFT_PORT))
-    s.listen()
-    while True:
-        conn, _ = s.accept()
-        data = conn.recv(1024)
-        if data == b'REQUEST':
 
-            mutex.acquire()
 
-            if state == State.EATING or state == State.TRYING_TO_EAT:
-                conn.sendall(b'NACK')
+    def think(self):
+        logging.info(f"thinking.")
+        time.sleep(random.uniform(1, 3))  # Denkt für 1-3 Sekunden
+
+
+    def eat(self):
+        logging.info(f"eating.")
+        time.sleep(random.uniform(5, 10))  # Isst für 1-2 Sekunden
+        logging.info(f"finished eating.")
+        
+    def start_with_right(self):
+        right_response = self.right_fork.reserve()
+        if right_response.get("status") == "success":
+            logging.info(f"reserved the first fork.")
+            left_response = self.left_fork.reserve()
+            if left_response.get("status") == "success":
+                logging.info(f"reserved the second fork.")
+                self.eat()
+                self.left_fork.free()
+                logging.info(f"freed the second fork.")
+                self.right_fork.free()
+                logging.info(f"freed the first fork.")
+                return True
             else:
-                conn.sendall(b'ACK')
+                logging.info(f"could not reserve the second fork.")
+                self.right_fork.free()
+                logging.info(f"freed the first fork.")
+                return False
+        else:
+            logging.info(f"could not reserve the first fork.")
+            return False
+        
     
-            mutex.release()
-
-        conn.close()
-
-
-def think():
-    global state,counter_think
-    mutex.acquire()
-    state = State.THINKING
-    mutex.release()
-    counter_think +=1
-    sleep_time = random.randint(3, 7)
-    logging.info("thinking for: %s s", sleep_time)
-    time.sleep(sleep_time)
-    logging.info("thinking ended")
+    def start_with_left(self):
+        left_response = self.left_fork.reserve()
+        if left_response.get("status") == "success":
+            logging.info(f"reserved the first fork.")
+            right_response = self.right_fork.reserve()
+            if right_response.get("status") == "success":
+                logging.info(f"reserved the second fork.")
+                self.eat()
+                self.right_fork.free()
+                logging.info(f"freed the second fork.")
+                self.left_fork.free()
+                logging.info(f"freed the first fork.")
+                return True
+            else:
+                logging.info(f"could not reserve the second fork.")
+                self.left_fork.free()
+                logging.info(f"freed the first fork.")
+                return False
+        else:
+            logging.info(f"could not reserve the first fork.")
+            return False
     
+    
+    
+    def try_to_eat(self):
+        logging.info(f"trying to eat.")
+        if self.right_handed:
+            return self.start_with_right()
+        else:
+            return self.start_with_left()
 
-def try_to_eat():
-    global state, counter_eat, counter_try_eat
-    mutex.acquire()
-    state = State.TRYING_TO_EAT
-    mutex.release()
-    counter_try_eat += 1
-    if DOMINANT_HAND_RIGHT:
-        if right_client(NAME_RIGHT_PARTNER):
-            if left_client(NAME_LEFT_PARTNER):
-                counter_eat += 1
-                mutex.acquire()
-                state = State.EATING
-                mutex.release()
-                
-                sleep_time = random.randint(1, 7)
-                logging.info("eating for: %s", sleep_time)
-                time.sleep(sleep_time)
-                
-    else:
-        if left_client(NAME_LEFT_PARTNER):
-            if right_client(NAME_RIGHT_PARTNER):
-                
-                mutex.acquire()
-                state = State.EATING
-                mutex.release()
-                sleep_time = random.randint(1, 10)
-                logging.info("eating for: %s", sleep_time)
-                time.sleep(sleep_time)
-                
-    logging.info("eating ended")
-
-
-t1 = threading.Thread(target=right_server)
-t1.start()
-
-t2 = threading.Thread(target=left_server)
-t2.start()
-
-counter = 0
-while True:
-    think()
-    try_to_eat()
-    if counter == 4:
-        logging.info("counter eat %d", counter_eat)
-        logging.info("counter try eat %d", counter_try_eat)
-        logging.info("counter think %d", counter_think)
-        logging.info("effizienz in prozent %d", int((counter_eat/(counter_eat+counter_try_eat))*100))
+    def live(self, cycles=5):
         counter = 0
-    counter += 1
+        while counter != cycles:
+            counter += 1
+            self.think()
+            if self.try_to_eat():
+                counter = 0
+                
+        logging.info("--------------------im dead-------------------")
 
+
+if __name__ == "__main__":
+    philosopher = Philosopher(ID)
+    philosopher.live()
