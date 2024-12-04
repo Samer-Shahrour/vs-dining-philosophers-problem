@@ -29,20 +29,25 @@ class MyRpc:
                 client_socket.sendall(json.dumps(request).encode())
                 response = client_socket.recv(1024).decode()
                 response = json.loads(response)
-                return response
+                return response.get("status") == "success"
         except Exception as e:
             logging.error(f"Error calling {method} on {self.host}:{self.port} - {e}")
-            return {"status": "error", "message": str(e)}
+            return False
 
 
 class Philosopher:
     def __init__(self, id):
-        self.id = int(id)  #2
+        self.id = int(id)
         self.fork_port = 8080
         left, right = self.get_forks(NUMBER_PHILOSOPHERS)
-        self.left_fork = MyRpc(left, self.fork_port)
-        self.right_fork = MyRpc(right, self.fork_port)
         self.right_handed = False if self.id % 2 != 0 else True
+
+        if self.right_handed:
+            self.dominant_side_fork = MyRpc(right, self.fork_port)
+            self.weak_side_fork = MyRpc(left, self.fork_port)
+        else:
+            self.dominant_side_fork = MyRpc(left, self.fork_port)
+            self.weak_side_fork = MyRpc(right, self.fork_port)
 
 
     def get_forks(self, NUMBER_PHILOSOPHERS):
@@ -59,67 +64,39 @@ class Philosopher:
 
     def think(self):
         logging.info(f"thinking.")
-        time.sleep(random.uniform(1, 3))  # Denkt für 1-3 Sekunden
+        time.sleep(random.uniform(1, 3))
+        logging.info(f"finished thinking.")
 
 
     def eat(self):
         logging.info(f"eating.")
-        time.sleep(random.uniform(5, 10))  # Isst für 1-2 Sekunden
+        time.sleep(random.uniform(5, 10))
         logging.info(f"finished eating.")
         
-    def start_with_right(self):
-        right_response = self.right_fork.reserve()
-        if right_response.get("status") == "success":
-            logging.info(f"reserved the first fork.")
-            left_response = self.left_fork.reserve()
-            if left_response.get("status") == "success":
-                logging.info(f"reserved the second fork.")
-                self.eat()
-                self.left_fork.free()
-                logging.info(f"freed the second fork.")
-                self.right_fork.free()
-                logging.info(f"freed the first fork.")
-                return True
-            else:
-                logging.info(f"could not reserve the second fork.")
-                self.right_fork.free()
-                logging.info(f"freed the first fork.")
-                return False
-        else:
-            logging.info(f"could not reserve the first fork.")
-            return False
-        
-    
-    def start_with_left(self):
-        left_response = self.left_fork.reserve()
-        if left_response.get("status") == "success":
-            logging.info(f"reserved the first fork.")
-            right_response = self.right_fork.reserve()
-            if right_response.get("status") == "success":
-                logging.info(f"reserved the second fork.")
-                self.eat()
-                self.right_fork.free()
-                logging.info(f"freed the second fork.")
-                self.left_fork.free()
-                logging.info(f"freed the first fork.")
-                return True
-            else:
-                logging.info(f"could not reserve the second fork.")
-                self.left_fork.free()
-                logging.info(f"freed the first fork.")
-                return False
-        else:
-            logging.info(f"could not reserve the first fork.")
-            return False
-    
-    
+
     
     def try_to_eat(self):
         logging.info(f"trying to eat.")
-        if self.right_handed:
-            return self.start_with_right()
+        if self.dominant_side_fork.reserve():
+            logging.info(f"reserved the first fork.")
+
+            if self.weak_side_fork.reserve():
+                logging.info(f"reserved the second fork.")
+                self.eat()
+                self.dominant_side_fork.free()
+                logging.info(f"freed the second fork.")
+                self.weak_side_fork.free()
+                logging.info(f"freed the first fork.")
+                return True
+            else:
+                logging.info(f"could not reserve the second fork.")
+                self.dominant_side_fork.free()
+                logging.info(f"freed the first fork.")
+                return False
         else:
-            return self.start_with_left()
+            logging.info(f"could not reserve the first fork.")
+            return False
+        
 
     def live(self, cycles=5):
         counter = 0
