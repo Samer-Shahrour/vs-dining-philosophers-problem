@@ -2,14 +2,14 @@ import socket
 import json
 import logging
 import os
+import time
+import sys
 from enum import Enum
-#from threading import Lock
-
+import threading
 
 class State(Enum):
     FREE = 1
     RESERVED = 2
-
 
 class Fork:
     def __init__(self, port=8080):
@@ -18,48 +18,44 @@ class Fork:
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.bind(("0.0.0.0", port))
         self.server_socket.listen(3)
-        #self.lock = Lock()
+        self.requests = []
+        self.lock = threading.Lock()
         logging.info(f"Fork server listening on port {port}")
 
     def reserve(self):
-        response = None
-        #self.lock.acquire()
-        
         if self.state == State.RESERVED:
-            response = {"status": "fail", "message": "Fork already reserved"}
+            return {"status": "fail", "message": "Fork already reserved"}
         else:
             self.state = State.RESERVED
-            response = {"status": "success", "message": "Fork reserved"}
-        
-        #self.lock.release()
-        return response
+            return {"status": "success", "message": "Fork reserved"}
 
     def free(self):
-        response = None
-        #self.lock.acquire()
-
         if self.state == State.RESERVED:
             self.state = State.FREE
-            response = {"status": "success", "message": "Fork freed"}
+            return {"status": "success", "message": "Fork freed"}
         else:
-            response = {"status": "fail", "message": "Fork is not reserved"}
-            
-        #self.lock.release()
-        return response
-    
+            return {"status": "fail", "message": "Fork is not reserved"}
+               
 
-    def handle_request(self, request):
-
+    def handle_request(self, conn, request):
         method = request.get("method")
 
         logging.info("received method = %s", method)
         if method == "reserve":
-            return self.reserve()
-        elif method == "free":
-            return self.free()
-        else:
-            return {"status": "error", "message": f"Unknown method: {method}"}
-        
+            self.requests.append((conn, request.get("times_eaten")))
+
+        else: 
+            try:
+                if method == "free":
+                    response = self.free()
+                else:
+                    response = {"status": "error", "message": f"Unknown method: {method}"}
+
+                conn.sendall(json.dumps(response).encode())    
+
+            finally:
+                conn.close()
+            
 
     def handle_client(self, conn, addr):
         logging.info(f"Connection established with {addr}")
@@ -67,29 +63,46 @@ class Fork:
             data = conn.recv(1024).decode()
             request = json.loads(data)
             logging.info(f"Received request: {request}")
-            response = self.handle_request(request)
-            conn.sendall(json.dumps(response).encode())
+            self.handle_request(conn, request)
+        
         except Exception as e:
             logging.error(f"Error: {e}")
-        finally:
-            conn.close()
-            logging.info(f"Connection with {addr} closed")
-
-
+       
 
     def start(self):
+        client_thread = threading.Thread(target=self.thread)
+        client_thread.start()
         while True:
             conn, addr = self.server_socket.accept()
             self.handle_client(conn, addr)
+            
+
+    def thread(self):
+        while True:
+            time.sleep(1)
+            least = sys.maxsize
+            least_conn = 0
+
+            for i in range(len(self.requests)):
+                (conn, times_eaten) = self.requests[i]
+                if times_eaten < least:
+                    least = times_eaten
+                    least_conn = conn
+            
+            if least != sys.maxsize:
+                try:
+                    response = self.reserve()
+                    least_conn.sendall(json.dumps(response).encode())
+                finally:
+                    conn.close()
 
 
 if __name__ == "__main__":
     ID = os.environ.get('ID')
     if not ID:
         ID = "ID"
-        
-    logging.basicConfig(format=f'{ID}: %(message)s', level=logging.INFO)
 
+    logging.basicConfig(format=f'{ID}: %(message)s', level=logging.INFO)
 
     fork = Fork()
     fork.start()

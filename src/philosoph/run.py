@@ -15,18 +15,19 @@ class MyRpc:
         self.host = host
         self.port = port
 
-    def reserve(self):
-        return self.call("reserve")
+    def reserve(self, times_eaten):
+        return self.call("reserve", times_eaten)
 
-    def free(self):
-        return self.call("free")
+    def free(self, times_eaten):
+        return self.call("free", times_eaten)
 
-    def call(self, method):
+    def call(self, method, times_eaten):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
                 client_socket.connect((self.host, self.port))
-                request = {"method": method}
+                request = {"method": method, "timestamp": times_eaten}
                 client_socket.sendall(json.dumps(request).encode())
+                
                 response = client_socket.recv(1024).decode()
                 response = json.loads(response)
                 return response.get("status") == "success"
@@ -41,6 +42,7 @@ class Philosopher:
         self.fork_port = 8080
         left, right = self.get_forks(NUMBER_PHILOSOPHERS)
         self.right_handed = False if self.id % 2 != 0 else True
+        self.times_eaten = 0
 
         if self.right_handed:
             self.dominant_side_fork = MyRpc(right, self.fork_port)
@@ -64,33 +66,34 @@ class Philosopher:
 
     def think(self):
         logging.info(f"thinking.")
-        time.sleep(random.uniform(1, 3))
+        time.sleep(2)
         logging.info(f"finished thinking.")
 
 
     def eat(self):
         logging.info(f"eating.")
-        time.sleep(random.uniform(5, 10))
+        time.sleep(2)
+        self.times_eaten += 1
         logging.info(f"finished eating.")
         
 
     
     def try_to_eat(self):
         logging.info(f"trying to eat.")
-        if self.dominant_side_fork.reserve():
+        if self.dominant_side_fork.reserve(self.times_eaten):
             logging.info(f"reserved the first fork.")
 
-            if self.weak_side_fork.reserve():
+            if self.weak_side_fork.reserve(self.times_eaten):
                 logging.info(f"reserved the second fork.")
                 self.eat()
-                self.dominant_side_fork.free()
+                self.dominant_side_fork.free(self.times_eaten)
                 logging.info(f"freed the second fork.")
-                self.weak_side_fork.free()
+                self.weak_side_fork.free(self.times_eaten)
                 logging.info(f"freed the first fork.")
                 return True
             else:
                 logging.info(f"could not reserve the second fork.")
-                self.dominant_side_fork.free()
+                self.dominant_side_fork.free(self.times_eaten)
                 logging.info(f"freed the first fork.")
                 return False
         else:
