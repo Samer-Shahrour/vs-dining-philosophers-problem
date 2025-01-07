@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import time
-import sys
 from enum import Enum
 import threading
 
@@ -19,39 +18,43 @@ class Fork:
         self.server_socket.bind(("0.0.0.0", port))
         self.server_socket.listen(3)
         self.requests = []
-        self.lock = threading.Lock()
+        self.requests_lock = threading.Lock()
+        self.state_lock = threading.Lock()
         logging.info(f"Fork server listening on port {port}")
 
     def reserve(self):
-        if self.state == State.RESERVED:
-            return {"status": "fail", "message": "Fork already reserved"}
-        else:
-            self.state = State.RESERVED
-            return {"status": "success", "message": "Fork reserved"}
+        with self.state_lock:
+            if self.state == State.RESERVED:
+                return {"status": "fail", "message": "Fork already reserved"}
+            else:
+                self.state = State.RESERVED
+                return {"status": "success", "message": "Fork reserved"}
 
     def free(self):
-        if self.state == State.RESERVED:
-            self.state = State.FREE
-            return {"status": "success", "message": "Fork freed"}
-        else:
-            return {"status": "fail", "message": "Fork is not reserved"}
-               
+        with self.state_lock:
+            if self.state == State.RESERVED:
+                self.state = State.FREE
+                return {"status": "success", "message": "Fork freed"}
+            else:
+                return {"status": "fail", "message": "Fork is not reserved"}
+
 
     def handle_request(self, conn, request):
         method = request.get("method")
 
         logging.info("received method = %s", method)
         if method == "reserve":
-            self.requests.append((conn, request.get("times_eaten")))
+            with self.requests_lock:
+                self.requests.append((conn, request.get("timestamp")))
 
-        else: 
+        else:
             try:
                 if method == "free":
                     response = self.free()
                 else:
                     response = {"status": "error", "message": f"Unknown method: {method}"}
 
-                conn.sendall(json.dumps(response).encode())    
+                conn.sendall(json.dumps(response).encode())
 
             finally:
                 conn.close()
@@ -67,7 +70,6 @@ class Fork:
         
         except Exception as e:
             logging.error(f"Error: {e}")
-       
 
     def start(self):
         client_thread = threading.Thread(target=self.thread)
@@ -80,21 +82,31 @@ class Fork:
     def thread(self):
         while True:
             time.sleep(1)
-            least = sys.maxsize
-            least_conn = 0
+            with self.requests_lock:
 
-            for i in range(len(self.requests)):
-                (conn, times_eaten) = self.requests[i]
-                if times_eaten < least:
-                    least = times_eaten
-                    least_conn = conn
-            
-            if least != sys.maxsize:
+                if not self.requests:
+                    continue
+                
                 try:
+                    self.requests.sort(key=lambda x: x[1])
+                    conn, _ = self.requests.pop(0)
+                    
                     response = self.reserve()
-                    least_conn.sendall(json.dumps(response).encode())
+                    conn.sendall(json.dumps(response).encode())
+
                 finally:
                     conn.close()
+
+                for conn, _ in self.requests:
+                    try:
+                        response = {"status": "fail", "message": "Fork already reserved"}
+                        conn.sendall(json.dumps(response).encode())
+                    finally:
+                        conn.close()
+
+                self.requests.clear()
+
+                    
 
 
 if __name__ == "__main__":

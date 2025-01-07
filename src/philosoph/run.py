@@ -1,14 +1,16 @@
 import socket
 import json
 import time
-import random
 import logging
 import os
+from mqtt.mqtt_wrapper import MQTTWrapper
 
 
 ID = os.environ.get('ID')
 logging.basicConfig(format=f'PH{ID}: %(message)s', level=logging.INFO)
 NUMBER_PHILOSOPHERS = int(os.environ.get('NUMBER_PHILOSOPHERS'))
+
+STATE_TOPIC = "State"
 
 class MyRpc:
     def __init__(self, host, port):
@@ -51,6 +53,19 @@ class Philosopher:
             self.dominant_side_fork = MyRpc(left, self.fork_port)
             self.weak_side_fork = MyRpc(right, self.fork_port)
 
+        self.mqtt = MQTTWrapper('mqttbroker', 1883, name= f'phi_{self.id}')
+
+
+    def publish(self, state):
+        data = {
+            "ID":           self.id,
+            "state":        state,
+            "times_eaten":  self.times_eaten
+            }
+        self.mqtt.loop_start()
+        self.mqtt.publish(STATE_TOPIC, json.dumps(data))
+        self.mqtt.stop()
+            
 
     def get_forks(self, NUMBER_PHILOSOPHERS):
         
@@ -66,20 +81,22 @@ class Philosopher:
 
     def think(self):
         logging.info(f"thinking.")
-        time.sleep(2)
+        self.publish("Thinking")
+        time.sleep(4)
         logging.info(f"finished thinking.")
 
 
     def eat(self):
         logging.info(f"eating.")
-        time.sleep(2)
+        self.publish("Eating")
+        time.sleep(4)
         self.times_eaten += 1
         logging.info(f"finished eating.")
         
 
-    
     def try_to_eat(self):
         logging.info(f"trying to eat.")
+        self.publish("Trying_to_eat")
         if self.dominant_side_fork.reserve(self.times_eaten):
             logging.info(f"reserved the first fork.")
 
@@ -109,9 +126,15 @@ class Philosopher:
             if self.try_to_eat():
                 counter = 0
                 
+                
         logging.info("--------------------im dead-------------------")
+        self.publish("Dead")
 
 
 if __name__ == "__main__":
     philosopher = Philosopher(ID)
     philosopher.live()
+
+    
+
+
