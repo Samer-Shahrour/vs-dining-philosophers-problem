@@ -46,11 +46,11 @@ class Philosopher:
         self.times_eaten = 0
 
         if self.right_handed:
-            self.dominant_side_fork = MyRpc(right_ip, right_port)
-            self.weak_side_fork = MyRpc(left_ip, left_port)
+            self.dominant_side_fork = MyRpc(ip, right_port)
+            self.weak_side_fork = MyRpc(ip, left_port)
         else:
-            self.dominant_side_fork = MyRpc(left_ip, left_port)
-            self.weak_side_fork = MyRpc(right_ip, right_port)
+            self.dominant_side_fork = MyRpc(ip, left_port)
+            self.weak_side_fork = MyRpc(ip, right_port)
 
         self.mqtt = MQTTWrapper('mqttbroker', 1883, name= f'phi_{self.id}')
 
@@ -72,12 +72,12 @@ class Philosopher:
         right_ip = self.ip + '.' + str(self.id + 1)
         left_ip = self.ip + '.' + str(self.id + 2)
         
-        right_port = self.port + self.id + 1
-        left_port = self.port + self.id + 2
+        right_port = self.port + self.id - 1
+        left_port = self.port + self.id 
         
         if self.id == NUMBER_PHILOSOPHERS:
             left_ip = self.ip + '.2'
-            left_port = self.port + 2
+            left_port = self.port
 
         return left_ip, right_ip, left_port, right_port      
 
@@ -122,6 +122,7 @@ class Philosopher:
 if __name__ == "__main__":
     ID = os.environ.get('ID')
     IP = os.environ.get('BASE_IP')
+    IP = os.environ.get('FORKS_IP')
     PORT = os.environ.get('BASE_PORT')
     logging.basicConfig(format=f'PH{ID}: %(message)s', level=logging.INFO)
     NUMBER_PHILOSOPHERS = int(os.environ.get('NUMBER_PHILOSOPHERS'))
@@ -129,7 +130,3 @@ if __name__ == "__main__":
     STATE_TOPIC = "State"
     philosopher = Philosopher(ID, IP, PORT)
     philosopher.live()
-
-    
-
-

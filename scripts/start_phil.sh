@@ -11,6 +11,7 @@ done
 
 NUMBER_PHILOSOPHERS=${number:-5}
 BASE_FORK_IP="20.0.1"
+FORK_IP="10.8.0.6"
 BASE_PORT=42040
 
 if [ "$NUMBER_PHILOSOPHERS" -lt 2 ]; then
@@ -47,7 +48,7 @@ function run_container_phil() {
   local id=$2
 
   echo "Starting $name..."
-  if docker run -d --net=vs-net --name "$name" -e ID=$id -e BASE_IP=$BASE_FORK_IP -e BASE_PORT=$BASE_PORT -e NUMBER_PHILOSOPHERS=$NUMBER_PHILOSOPHERS "philosoph"; then
+  if docker run -d --net=vs-net --name "$name" -e ID=$id -e BASE_IP=$BASE_FORK_IP -e FORKS_IP=$FORK_IP -e BASE_PORT=$BASE_PORT -e NUMBER_PHILOSOPHERS=$NUMBER_PHILOSOPHERS "philosoph"; then
     echo "$name started successfully."
   fi
   echo ""
