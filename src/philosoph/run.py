@@ -80,41 +80,29 @@ class Philosopher:
 
 
     def think(self):
-        logging.info(f"thinking.")
         self.publish("Thinking")
         time.sleep(4)
-        logging.info(f"finished thinking.")
 
 
     def eat(self):
-        logging.info(f"eating.")
         self.publish("Eating")
         time.sleep(4)
         self.times_eaten += 1
-        logging.info(f"finished eating.")
         
 
     def try_to_eat(self):
-        logging.info(f"trying to eat.")
         self.publish("Trying_to_eat")
         if self.dominant_side_fork.reserve(self.times_eaten):
-            logging.info(f"reserved the first fork.")
 
             if self.weak_side_fork.reserve(self.times_eaten):
-                logging.info(f"reserved the second fork.")
                 self.eat()
                 self.dominant_side_fork.free(self.times_eaten)
-                logging.info(f"freed the second fork.")
                 self.weak_side_fork.free(self.times_eaten)
-                logging.info(f"freed the first fork.")
                 return True
             else:
-                logging.info(f"could not reserve the second fork.")
                 self.dominant_side_fork.free(self.times_eaten)
-                logging.info(f"freed the first fork.")
                 return False
         else:
-            logging.info(f"could not reserve the first fork.")
             return False
         
 
@@ -126,8 +114,6 @@ class Philosopher:
             if self.try_to_eat():
                 counter = 0
                 
-                
-        logging.info("--------------------im dead-------------------")
         self.publish("Dead")
 
 

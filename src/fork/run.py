@@ -1,10 +1,10 @@
 import socket
 import json
-import logging
 import os
 import time
 from enum import Enum
 import threading
+import logging
 
 class State(Enum):
     FREE = 1
@@ -20,7 +20,6 @@ class Fork:
         self.requests = []
         self.requests_lock = threading.Lock()
         self.state_lock = threading.Lock()
-        logging.info(f"Fork server listening on port {port}")
 
     def reserve(self):
         with self.state_lock:
@@ -42,7 +41,6 @@ class Fork:
     def handle_request(self, conn, request):
         method = request.get("method")
 
-        logging.info("received method = %s", method)
         if method == "reserve":
             with self.requests_lock:
                 self.requests.append((conn, request.get("timestamp")))
@@ -61,11 +59,9 @@ class Fork:
             
 
     def handle_client(self, conn, addr):
-        logging.info(f"Connection established with {addr}")
         try:
             data = conn.recv(1024).decode()
             request = json.loads(data)
-            logging.info(f"Received request: {request}")
             self.handle_request(conn, request)
         
         except Exception as e:
