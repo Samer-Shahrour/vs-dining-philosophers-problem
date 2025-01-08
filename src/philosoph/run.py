@@ -6,12 +6,6 @@ import os
 from mqtt.mqtt_wrapper import MQTTWrapper
 
 
-ID = os.environ.get('ID')
-logging.basicConfig(format=f'PH{ID}: %(message)s', level=logging.INFO)
-NUMBER_PHILOSOPHERS = int(os.environ.get('NUMBER_PHILOSOPHERS'))
-
-STATE_TOPIC = "State"
-
 class MyRpc:
     def __init__(self, host, port):
         self.host = host
@@ -33,30 +27,36 @@ class MyRpc:
                 response = client_socket.recv(1024).decode()
                 response = json.loads(response)
                 return response.get("status") == "success"
+            
         except Exception as e:
             logging.error(f"Error calling {method} on {self.host}:{self.port} - {e}")
             return False
 
 
 class Philosopher:
-    def __init__(self, id):
+    def __init__(self, id, ip, port):
         self.id = int(id)
-        self.fork_port = 8080
-        left, right = self.get_forks(NUMBER_PHILOSOPHERS)
+        self.ip = ip
+        self.port = int(port)
+        left_ip, right_ip, left_port, right_port = self.get_forks(NUMBER_PHILOSOPHERS)
+        logging.info(f"my id: {self.id}")
+        logging.info(f"my right ip: {right_ip}, and my left ip: {left_ip}")
+        logging.info(f"my right port: {right_port}, and my left port: {left_port}")
         self.right_handed = False if self.id % 2 != 0 else True
         self.times_eaten = 0
 
         if self.right_handed:
-            self.dominant_side_fork = MyRpc(right, self.fork_port)
-            self.weak_side_fork = MyRpc(left, self.fork_port)
+            self.dominant_side_fork = MyRpc(right_ip, right_port)
+            self.weak_side_fork = MyRpc(left_ip, left_port)
         else:
-            self.dominant_side_fork = MyRpc(left, self.fork_port)
-            self.weak_side_fork = MyRpc(right, self.fork_port)
+            self.dominant_side_fork = MyRpc(left_ip, left_port)
+            self.weak_side_fork = MyRpc(right_ip, right_port)
 
         self.mqtt = MQTTWrapper('mqttbroker', 1883, name= f'phi_{self.id}')
 
 
     def publish(self, state):
+        print("TODO")
         data = {
             "ID":           self.id,
             "state":        state,
@@ -65,19 +65,21 @@ class Philosopher:
         self.mqtt.loop_start()
         self.mqtt.publish(STATE_TOPIC, json.dumps(data))
         self.mqtt.stop()
+
             
 
     def get_forks(self, NUMBER_PHILOSOPHERS):
+        right_ip = self.ip + '.' + str(self.id + 1)
+        left_ip = self.ip + '.' + str(self.id + 2)
         
-        right = f"f{self.id - 1}"
-        left = f"f{self.id}"
+        right_port = self.port + self.id + 1
+        left_port = self.port + self.id + 2
+        
+        if self.id == NUMBER_PHILOSOPHERS:
+            left_ip = self.ip + '.2'
+            left_port = self.port + 2
 
-        if self.id == 1:
-            right = f"f{NUMBER_PHILOSOPHERS}"
-
-        return left, right
-    
-
+        return left_ip, right_ip, left_port, right_port      
 
     def think(self):
         self.publish("Thinking")
@@ -118,7 +120,14 @@ class Philosopher:
 
 
 if __name__ == "__main__":
-    philosopher = Philosopher(ID)
+    ID = os.environ.get('ID')
+    IP = os.environ.get('BASE_IP')
+    PORT = os.environ.get('BASE_PORT')
+    logging.basicConfig(format=f'PH{ID}: %(message)s', level=logging.INFO)
+    NUMBER_PHILOSOPHERS = int(os.environ.get('NUMBER_PHILOSOPHERS'))
+
+    STATE_TOPIC = "State"
+    philosopher = Philosopher(ID, IP, PORT)
     philosopher.live()
 
     

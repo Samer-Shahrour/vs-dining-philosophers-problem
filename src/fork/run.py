@@ -11,11 +11,13 @@ class State(Enum):
     RESERVED = 2
 
 class Fork:
-    def __init__(self, port=8080):
-        self.port = port
+    def __init__(self, ip, port):
+        self.port = int(port)
         self.state = State.FREE
+        logging.info(f"my ip is: {ip}")
+        logging.info(f"my port is: {self.port}")
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.bind(("0.0.0.0", port))
+        self.server_socket.bind((ip, self.port))
         self.server_socket.listen(3)
         self.requests = []
         self.requests_lock = threading.Lock()
@@ -107,10 +109,13 @@ class Fork:
 
 if __name__ == "__main__":
     ID = os.environ.get('ID')
+    IP = os.environ.get('IP')
+    PORT = os.environ.get('PORT')
+
     if not ID:
         ID = "ID"
 
-    logging.basicConfig(format=f'{ID}: %(message)s', level=logging.INFO)
+    logging.basicConfig(format=f'F{ID}: %(message)s', level=logging.INFO)
 
-    fork = Fork()
+    fork = Fork(IP, PORT)
     fork.start()
