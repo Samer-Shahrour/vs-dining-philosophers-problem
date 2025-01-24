@@ -36,11 +36,6 @@ function build_container() {
   echo ""
 }
 
-# Cleanup existing Docker network if it exists
-docker network rm vs-net 2>/dev/null || true
-docker network create --driver bridge --subnet=20.0.0.0/22 vs-net
-echo "Network vs-net is ready."
-
 # Build the "fork" container
 build_container "fork" "fork"
 

@@ -11,7 +11,8 @@ done
 
 NUMBER_PHILOSOPHERS=${number:-5}
 BASE_FORK_IP="20.0.1"
-FORK_IP="10.8.0.6"
+FORK_IP="10.8.1.6"
+PRS_IP="10.8.1.6"
 BASE_PORT=42040
 
 if [ "$NUMBER_PHILOSOPHERS" -lt 2 ]; then
@@ -32,23 +33,13 @@ function build_container() {
   echo ""
 }
 build_container "philosoph" "philosoph"
-build_container "dashboard" "dashboard"
-
-
-if docker run -d -p 127.0.0.1:8883:1883 --net=vs-net --name mqttbroker eclipse-mosquitto:1.6.13; then
-  echo "MQTT Broker started."
-fi
-
-if docker run -d -p 127.0.0.1:1880:1880 --net=vs-net --name dashboard dashboard; then
-  echo "Dashboard started."
-fi
 
 function run_container_phil() {
   local name=$1
   local id=$2
 
   echo "Starting $name..."
-  if docker run -d --net=vs-net --name "$name" -e ID=$id -e BASE_IP=$BASE_FORK_IP -e FORKS_IP=$FORK_IP -e BASE_PORT=$BASE_PORT -e NUMBER_PHILOSOPHERS=$NUMBER_PHILOSOPHERS "philosoph"; then
+  if docker run -d --net=vs-net --name "$name" -e PRS_IP=$PRS_IP -e ID=$id -e BASE_IP=$BASE_FORK_IP -e FORKS_IP=$FORK_IP -e BASE_PORT=$BASE_PORT -e NUMBER_PHILOSOPHERS=$NUMBER_PHILOSOPHERS "philosoph"; then
     echo "$name started successfully."
   fi
   echo ""
@@ -65,11 +56,5 @@ do
     docker logs -f ph$i &
 done
 
-
-DASHBOARD_URL="http://127.0.0.1:1880/ui"
-DASHBOARD_URL_flow="http://127.0.0.1:1880/"
-
-start $DASHBOARD_URL_flow
-start $DASHBOARD_URL
 
 bash
